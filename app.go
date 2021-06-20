@@ -9,12 +9,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
+	tracer "github.com/hirosuzuki/go-isucon-tracer"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -195,6 +198,12 @@ type initializeResponse struct {
 }
 
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
+	tracer.Start()
+	startCmd := exec.Command("sh", "/tmp/start.sh", tracer.TraceID)
+	startCmd.Stderr = os.Stderr
+	startCmd.Stdout = os.Stderr
+	startCmd.Start()
+
 	err := transaction(r.Context(), &sql.TxOptions{}, func(ctx context.Context, tx *sqlx.Tx) error {
 		if _, err := tx.ExecContext(ctx, "TRUNCATE `reservations`"); err != nil {
 			return err
