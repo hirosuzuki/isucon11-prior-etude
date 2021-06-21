@@ -29,3 +29,7 @@ pprof:
 shell:
 	ssh ${REMOTEHOST}
 
+
+schema:
+	scp 00_setup.sql ${REMOTEHOST}:/home/hirosuzuki/isucon11-prior/webapp/sql/00_setup.sql
+	scp 01_schema.sql ${REMOTEHOST}:/home/hirosuzuki/isucon11-prior/webapp/sql/01_schema.sql
