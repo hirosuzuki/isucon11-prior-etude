@@ -371,11 +371,11 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return sendErrorJSON(w, fmt.Errorf("user not found"), 403)
 		}
 
-		found = 0
-		tx.QueryRowContext(ctx, "SELECT 1 FROM `reservations` WHERE `schedule_id` = ? AND `user_id` = ? LIMIT 1", scheduleID, userID).Scan(&found)
-		if found == 1 {
-			return sendErrorJSON(w, fmt.Errorf("already taken"), 403)
-		}
+		//found = 0
+		//tx.QueryRowContext(ctx, "SELECT 1 FROM `reservations` WHERE `schedule_id` = ? AND `user_id` = ? LIMIT 1", scheduleID, userID).Scan(&found)
+		//if found == 1 {
+		//	return sendErrorJSON(w, fmt.Errorf("already taken"), 403)
+		//}
 
 		capacity := 0
 		reserved := 0
@@ -387,11 +387,15 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return sendErrorJSON(w, fmt.Errorf("capacity is already full"), 403)
 		}
 
+		var createdAt time.Time = time.Now()
 		if _, err := tx.ExecContext(
 			ctx,
-			"INSERT INTO `reservations` (`id`, `schedule_id`, `user_id`, `created_at`) VALUES (?, ?, ?, NOW(6))",
-			id, scheduleID, userID,
+			"INSERT INTO `reservations` (`id`, `schedule_id`, `user_id`, `created_at`) VALUES (?, ?, ?, ?)",
+			id, scheduleID, userID, createdAt,
 		); err != nil {
+			// 403 {"error":"schedule not found"}
+
+			// err.Error() "Error 1062: Duplicate entry '01F8QEKAKNSEZ2P7G2B0K0A750-01F8QEQB2XMF5AA94EE28270MB' for key 'idx_schedule_user'"
 			return err
 		}
 
@@ -403,10 +407,6 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		var createdAt time.Time
-		if err := tx.QueryRowContext(ctx, "SELECT `created_at` FROM `reservations` WHERE `id` = ?", id).Scan(&createdAt); err != nil {
-			return err
-		}
 		reservation.ID = id
 		reservation.ScheduleID = scheduleID
 		reservation.UserID = userID
