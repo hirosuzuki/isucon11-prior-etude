@@ -25,3 +25,7 @@ synclogs:
 
 pprof:
 	go tool pprof -http="127.0.0.1:8020" logs/latest/cpu.pprof
+
+shell:
+	ssh ${REMOTEHOST}
+
