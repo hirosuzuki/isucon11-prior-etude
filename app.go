@@ -102,19 +102,6 @@ func getReservations(r *http.Request, s *Schedule) error {
 }
 
 func getReservationsCount(r *http.Request, s *Schedule) error {
-	rows, err := db.QueryxContext(r.Context(), "SELECT * FROM `reservations` WHERE `schedule_id` = ?", s.ID)
-	if err != nil {
-		return err
-	}
-
-	defer rows.Close()
-
-	reserved := 0
-	for rows.Next() {
-		reserved++
-	}
-	s.Reserved = reserved
-
 	return nil
 }
 
@@ -391,17 +378,9 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		capacity := 0
-		if err := tx.QueryRowContext(ctx, "SELECT `capacity` FROM `schedules` WHERE `id` = ? LIMIT 1", scheduleID).Scan(&capacity); err != nil {
-			return sendErrorJSON(w, err, 500)
-		}
-
-		rows, err := tx.QueryContext(ctx, "SELECT * FROM `reservations` WHERE `schedule_id` = ?", scheduleID)
-		if err != nil && err != sql.ErrNoRows {
-			return sendErrorJSON(w, err, 500)
-		}
 		reserved := 0
-		for rows.Next() {
-			reserved++
+		if err := tx.QueryRowContext(ctx, "SELECT `capacity`, `reserved` FROM `schedules` WHERE `id` = ? LIMIT 1", scheduleID).Scan(&capacity, &reserved); err != nil {
+			return sendErrorJSON(w, err, 500)
 		}
 
 		if reserved >= capacity {
@@ -412,6 +391,14 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			ctx,
 			"INSERT INTO `reservations` (`id`, `schedule_id`, `user_id`, `created_at`) VALUES (?, ?, ?, NOW(6))",
 			id, scheduleID, userID,
+		); err != nil {
+			return err
+		}
+
+		if _, err := tx.ExecContext(
+			ctx,
+			"UPDATE `schedules` SET `reserved` = `reserved` + 1 WHERE `id` = ?",
+			scheduleID,
 		); err != nil {
 			return err
 		}
