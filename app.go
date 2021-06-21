@@ -357,17 +357,16 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 		scheduleID := r.PostFormValue("schedule_id")
 		userID := getCurrentUser(r).ID
 
-		found := 0
-		tx.QueryRowContext(ctx, "SELECT 1 FROM `schedules` WHERE `id` = ? LIMIT 1 FOR UPDATE", scheduleID).Scan(&found)
-		if found != 1 {
-			return sendErrorJSON(w, fmt.Errorf("schedule not found"), 403)
-		}
-
-		found = 0
-		tx.QueryRowContext(ctx, "SELECT 1 FROM `users` WHERE `id` = ? LIMIT 1", userID).Scan(&found)
-		if found != 1 {
+		user := getRawUser(userID)
+		if user == nil {
 			return sendErrorJSON(w, fmt.Errorf("user not found"), 403)
 		}
+
+		//found := 0
+		//tx.QueryRowContext(ctx, "SELECT 1 FROM `schedules` WHERE `id` = ? LIMIT 1 FOR UPDATE", scheduleID).Scan(&found)
+		//if found != 1 {
+		//	return sendErrorJSON(w, fmt.Errorf("schedule not found"), 403)
+		//}
 
 		//found = 0
 		//tx.QueryRowContext(ctx, "SELECT 1 FROM `reservations` WHERE `schedule_id` = ? AND `user_id` = ? LIMIT 1", scheduleID, userID).Scan(&found)
@@ -375,15 +374,17 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 		//	return sendErrorJSON(w, fmt.Errorf("already taken"), 403)
 		//}
 
-		capacity := 0
-		reserved := 0
-		if err := tx.QueryRowContext(ctx, "SELECT `capacity`, `reserved` FROM `schedules` WHERE `id` = ? LIMIT 1", scheduleID).Scan(&capacity, &reserved); err != nil {
-			return sendErrorJSON(w, err, 500)
-		}
+		/*
+			capacity := 0
+			reserved := 0
+			if err := tx.QueryRowContext(ctx, "SELECT `capacity`, `reserved` FROM `schedules` WHERE `id` = ? LIMIT 1", scheduleID).Scan(&capacity, &reserved); err != nil {
+				return sendErrorJSON(w, err, 500)
+			}
 
-		if reserved >= capacity {
-			return sendErrorJSON(w, fmt.Errorf("capacity is already full"), 403)
-		}
+			if reserved >= capacity {
+				return sendErrorJSON(w, fmt.Errorf("capacity is already full"), 403)
+			}
+		*/
 
 		var createdAt time.Time = time.Now()
 		if _, err := tx.ExecContext(
@@ -397,12 +398,19 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		if _, err := tx.ExecContext(
+		var err error
+		var result sql.Result
+		result, err = tx.ExecContext(
 			ctx,
-			"UPDATE `schedules` SET `reserved` = `reserved` + 1 WHERE `id` = ?",
+			"UPDATE `schedules` SET `reserved` = `reserved` + 1 WHERE `id` = ? AND `reserved` < `capacity`",
 			scheduleID,
-		); err != nil {
+		)
+		if err != nil {
 			return err
+		}
+		count, err := result.RowsAffected()
+		if count == 0 {
+			return sendErrorJSON(w, fmt.Errorf("capacity is already full"), 403)
 		}
 
 		reservation.ID = id
