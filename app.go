@@ -230,24 +230,23 @@ func createUser(ctx context.Context, tx *sqlx.Tx, email string, nickname string,
 	user := User{}
 	id := generateID(tx, "users")
 
+	var createdAt time.Time = time.Now()
 	if _, err := tx.ExecContext(
 		ctx,
-		"INSERT INTO `users` (`id`, `email`, `nickname`, `staff`, `created_at`) VALUES (?, ?, ?, ?, NOW(6))",
-		id, email, nickname, staff,
+		"INSERT INTO `users` (`id`, `email`, `nickname`, `staff`, `created_at`) VALUES (?, ?, ?, ?, ?)",
+		id, email, nickname, staff, createdAt,
 	); err != nil {
 		return &user, err
 	}
+
 	user.ID = id
 	user.Email = email
 	user.Nickname = nickname
 	user.Staff = staff
-	err := tx.QueryRowContext(ctx, "SELECT `created_at` FROM `users` WHERE `id` = ? LIMIT 1", id).Scan(&user.CreatedAt)
+	user.CreatedAt = createdAt
+	userMap[id] = user
 
-	if err == nil {
-		userMap[id] = user
-	}
-
-	return &user, err
+	return &user, nil
 }
 
 func signupHandler(w http.ResponseWriter, r *http.Request) {
@@ -319,19 +318,18 @@ func createScheduleHandler(w http.ResponseWriter, r *http.Request) {
 		title := r.PostFormValue("title")
 		capacity, _ := strconv.Atoi(r.PostFormValue("capacity"))
 
+		var createdAt time.Time = time.Now()
 		if _, err := tx.ExecContext(
 			ctx,
-			"INSERT INTO `schedules` (`id`, `title`, `capacity`, `created_at`) VALUES (?, ?, ?, NOW(6))",
-			id, title, capacity,
+			"INSERT INTO `schedules` (`id`, `title`, `capacity`, `created_at`) VALUES (?, ?, ?, ?)",
+			id, title, capacity, createdAt,
 		); err != nil {
-			return err
-		}
-		if err := tx.QueryRowContext(ctx, "SELECT `created_at` FROM `schedules` WHERE `id` = ?", id).Scan(&schedule.CreatedAt); err != nil {
 			return err
 		}
 		schedule.ID = id
 		schedule.Title = title
 		schedule.Capacity = capacity
+		schedule.CreatedAt = createdAt
 
 		return nil
 	})
