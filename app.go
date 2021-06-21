@@ -9,15 +9,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
-	tracer "github.com/hirosuzuki/go-isucon-tracer"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -189,11 +188,11 @@ type initializeResponse struct {
 }
 
 func initializeHandler(w http.ResponseWriter, r *http.Request) {
-	tracer.Start()
-	startCmd := exec.Command("sh", "/tmp/start.sh", tracer.TraceID)
-	startCmd.Stderr = os.Stderr
-	startCmd.Stdout = os.Stderr
-	startCmd.Start()
+	//tracer.Start()
+	//startCmd := exec.Command("sh", "/tmp/start.sh", tracer.TraceID)
+	//startCmd.Stderr = os.Stderr
+	//startCmd.Stdout = os.Stderr
+	//startCmd.Start()
 
 	err := transaction(r.Context(), &sql.TxOptions{}, func(ctx context.Context, tx *sqlx.Tx) error {
 		if _, err := tx.ExecContext(ctx, "TRUNCATE `reservations`"); err != nil {
@@ -341,7 +340,13 @@ func createScheduleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+var gLock sync.Mutex
+
 func createReservationHandler(w http.ResponseWriter, r *http.Request) {
+
+	gLock.Lock()
+	defer gLock.Unlock()
+
 	if err := parseForm(r); err != nil {
 		sendErrorJSON(w, err, 500)
 		return
@@ -386,18 +391,6 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		*/
 
-		var createdAt time.Time = time.Now()
-		if _, err := tx.ExecContext(
-			ctx,
-			"INSERT INTO `reservations` (`id`, `schedule_id`, `user_id`, `created_at`) VALUES (?, ?, ?, ?)",
-			id, scheduleID, userID, createdAt,
-		); err != nil {
-			// 403 {"error":"schedule not found"}
-
-			// err.Error() "Error 1062: Duplicate entry '01F8QEKAKNSEZ2P7G2B0K0A750-01F8QEQB2XMF5AA94EE28270MB' for key 'idx_schedule_user'"
-			return err
-		}
-
 		var err error
 		var result sql.Result
 		result, err = tx.ExecContext(
@@ -411,6 +404,18 @@ func createReservationHandler(w http.ResponseWriter, r *http.Request) {
 		count, err := result.RowsAffected()
 		if count == 0 {
 			return sendErrorJSON(w, fmt.Errorf("capacity is already full"), 403)
+		}
+
+		var createdAt time.Time = time.Now()
+		if _, err := tx.ExecContext(
+			ctx,
+			"INSERT INTO `reservations` (`id`, `schedule_id`, `user_id`, `created_at`) VALUES (?, ?, ?, ?)",
+			id, scheduleID, userID, createdAt,
+		); err != nil {
+			// 403 {"error":"schedule not found"}
+
+			// err.Error() "Error 1062: Duplicate entry '01F8QEKAKNSEZ2P7G2B0K0A750-01F8QEQB2XMF5AA94EE28270MB' for key 'idx_schedule_user'"
+			return err
 		}
 
 		reservation.ID = id

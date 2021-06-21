@@ -41,7 +41,7 @@ func init() {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true", user, pass, host, port, name)
 
 	var err error
-	db, err = sqlx.Connect("mysql:logger", dsn)
+	db, err = sqlx.Connect("mysql", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
