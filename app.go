@@ -56,11 +56,7 @@ func getCurrentUser(r *http.Request) *User {
 	if err != nil || uidCookie == nil {
 		return nil
 	}
-	row := db.QueryRowxContext(r.Context(), "SELECT * FROM `users` WHERE `id` = ? LIMIT 1", uidCookie.Value)
-	user := &User{}
-	if err := row.StructScan(user); err != nil {
-		return nil
-	}
+	user := getRawUser(uidCookie.Value)
 	return user
 }
 
@@ -122,9 +118,17 @@ func getReservationsCount(r *http.Request, s *Schedule) error {
 	return nil
 }
 
+func getRawUser(id string) *User {
+	user, err := userMap[id]
+	if err == false {
+		return nil
+	}
+	return &user
+}
+
 func getUser(r *http.Request, id string) *User {
-	user := &User{}
-	if err := db.QueryRowxContext(r.Context(), "SELECT * FROM `users` WHERE `id` = ? LIMIT 1", id).StructScan(user); err != nil {
+	user := getRawUser(id)
+	if user == nil {
 		return nil
 	}
 	if getCurrentUser(r) != nil && !getCurrentUser(r).Staff {
@@ -215,14 +219,8 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		id := generateID(tx, "users")
-		if _, err := tx.ExecContext(
-			ctx,
-			"INSERT INTO `users` (`id`, `email`, `nickname`, `staff`, `created_at`) VALUES (?, ?, ?, true, NOW(6))",
-			id,
-			"isucon2021_prior@isucon.net",
-			"isucon",
-		); err != nil {
+		_, err := createUser(ctx, tx, "isucon2021_prior@isucon.net", "isucon", true)
+		if err != nil {
 			return err
 		}
 
@@ -239,6 +237,32 @@ func sessionHandler(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, getCurrentUser(r), 200)
 }
 
+var userMap map[string]User = make(map[string]User)
+
+func createUser(ctx context.Context, tx *sqlx.Tx, email string, nickname string, staff bool) (*User, error) {
+	user := User{}
+	id := generateID(tx, "users")
+
+	if _, err := tx.ExecContext(
+		ctx,
+		"INSERT INTO `users` (`id`, `email`, `nickname`, `staff`, `created_at`) VALUES (?, ?, ?, ?, NOW(6))",
+		id, email, nickname, staff,
+	); err != nil {
+		return &user, err
+	}
+	user.ID = id
+	user.Email = email
+	user.Nickname = nickname
+	user.Staff = staff
+	err := tx.QueryRowContext(ctx, "SELECT `created_at` FROM `users` WHERE `id` = ? LIMIT 1", id).Scan(&user.CreatedAt)
+
+	if err == nil {
+		userMap[id] = user
+	}
+
+	return &user, err
+}
+
 func signupHandler(w http.ResponseWriter, r *http.Request) {
 	if err := parseForm(r); err != nil {
 		sendErrorJSON(w, err, 500)
@@ -248,22 +272,12 @@ func signupHandler(w http.ResponseWriter, r *http.Request) {
 	user := &User{}
 
 	err := transaction(r.Context(), &sql.TxOptions{}, func(ctx context.Context, tx *sqlx.Tx) error {
+
 		email := r.FormValue("email")
 		nickname := r.FormValue("nickname")
-		id := generateID(tx, "users")
-
-		if _, err := tx.ExecContext(
-			ctx,
-			"INSERT INTO `users` (`id`, `email`, `nickname`, `created_at`) VALUES (?, ?, ?, NOW(6))",
-			id, email, nickname,
-		); err != nil {
-			return err
-		}
-		user.ID = id
-		user.Email = email
-		user.Nickname = nickname
-
-		return tx.QueryRowContext(ctx, "SELECT `created_at` FROM `users` WHERE `id` = ? LIMIT 1", id).Scan(&user.CreatedAt)
+		var err error
+		user, err = createUser(ctx, tx, email, nickname, false)
+		return err
 	})
 
 	if err != nil {
